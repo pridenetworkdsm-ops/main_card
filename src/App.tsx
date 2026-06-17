@@ -58,7 +58,8 @@ function AppContent() {
           });
         }
         setMaintenanceLoading(false);
-      });
+      })
+      .catch(() => setMaintenanceLoading(false));
   }, []);
 
   const navigate = (page: string) => {

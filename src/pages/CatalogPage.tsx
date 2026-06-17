@@ -13,6 +13,7 @@ interface CatalogPageProps {
 export default function CatalogPage({ onViewProduct, initialType }: CatalogPageProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState(initialType ?? '');
   const [rarityFilter, setRarityFilter] = useState('');
@@ -21,12 +22,16 @@ export default function CatalogPage({ onViewProduct, initialType }: CatalogPageP
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('products')
         .select('*')
         .eq('in_stock', true)
         .order('created_at', { ascending: false });
-      setProducts(data ?? []);
+      if (error) {
+        setFetchError(error.message);
+      } else {
+        setProducts(data ?? []);
+      }
       setLoading(false);
     })();
   }, []);
@@ -256,6 +261,20 @@ export default function CatalogPage({ onViewProduct, initialType }: CatalogPageP
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="animate-pulse bg-gray-200 rounded-xl h-64" />
             ))}
+          </div>
+        ) : fetchError ? (
+          <div className="text-center py-20">
+            <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8 text-red-300" />
+            </div>
+            <p className="text-gray-600 font-medium mb-1">Unable to load products</p>
+            <p className="text-gray-400 text-sm mb-5">{fetchError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-red-600 hover:text-red-700 font-semibold text-sm"
+            >
+              Try again
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
