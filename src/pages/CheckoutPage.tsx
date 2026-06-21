@@ -49,9 +49,11 @@ interface OrderSummaryProps {
   finalTotal: number;
   pkbEarnPreview: number;
   isLoggedIn: boolean;
+  taxAmount?: number;
+  taxRate?: number;
 }
 
-function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarnPreview, isLoggedIn }: OrderSummaryProps) {
+function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarnPreview, isLoggedIn, taxAmount = 0, taxRate = 0 }: OrderSummaryProps) {
   const { items, totalPrice } = useCart();
   const pkbDiscount = pkbToApply / 10;
   // Max applicable: leave at least $1 for Stripe, rounded to nearest 10 PKB
@@ -100,6 +102,14 @@ function OrderSummary({ pkbBalance, pkbToApply, onPkbChange, finalTotal, pkbEarn
               PokeBucks ({pkbToApply.toLocaleString()} $PKB)
             </span>
             <span className="font-semibold text-green-600">-${pkbDiscount.toFixed(2)}</span>
+          </div>
+        )}
+        {taxAmount > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">
+              Tax {taxRate > 0 ? `(${(taxRate * 100).toFixed(2)}%)` : ''}
+            </span>
+            <span className="font-semibold text-gray-900">${taxAmount.toFixed(2)}</span>
           </div>
         )}
         <div className="flex justify-between border-t border-gray-200 pt-3 mt-1">
@@ -504,6 +514,11 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   const [pkbEarned, setPkbEarned] = useState(0);
   const [pkbTxHash, setPkbTxHash] = useState<string | null>(null);
 
+  // Tax (resolved server-side after shipping step)
+  const [taxAmount, setTaxAmount] = useState(0);
+  const [taxRate, setTaxRate] = useState(0);
+  const [chargedTotal, setChargedTotal] = useState(0);
+
   useEffect(() => {
     if (!user) return;
     supabase
@@ -572,6 +587,8 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
         body: JSON.stringify({
           items: items.map((i) => ({ product_id: i.product.id, quantity: i.quantity })),
           pkb_discount: pkbToApply,
+          shipping_state: shipping.state,
+          shipping_country: shipping.country,
         }),
       });
 
@@ -579,6 +596,9 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
       if (!res.ok) throw new Error(data.error ?? 'Failed to create payment intent');
 
       setClientSecret(data.client_secret);
+      setTaxAmount((data.tax_cents ?? 0) / 100);
+      setTaxRate(data.tax_rate ?? 0);
+      setChargedTotal((data.total_cents ?? 0) / 100);
       setStep('payment');
     } catch (err) {
       alert((err as Error).message);
@@ -601,7 +621,8 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
         .from('orders')
         .insert({
           user_id: user.id,
-          total: finalTotal,
+          total: chargedTotal || finalTotal,
+          tax_amount: taxAmount,
           shipping_address: shippingAddress,
           status: 'pending',
           stripe_payment_intent_id: paymentIntentId,
@@ -697,7 +718,7 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
               <Elements stripe={stripePromise} options={stripeOptions}>
                 <PaymentFormInner
                   shipping={shipping}
-                  totalPrice={finalTotal}
+                  totalPrice={chargedTotal || finalTotal}
                   onBack={() => setStep('shipping')}
                   onSuccess={handlePaymentSuccess}
                 />
@@ -711,9 +732,11 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
               pkbBalance={pkbBalance}
               pkbToApply={pkbToApply}
               onPkbChange={setPkbToApply}
-              finalTotal={finalTotal}
+              finalTotal={chargedTotal || finalTotal}
               pkbEarnPreview={pkbEarnPreview}
               isLoggedIn={!!user}
+              taxAmount={taxAmount}
+              taxRate={taxRate}
             />
           </div>
         </div>
