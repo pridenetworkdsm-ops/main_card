@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
       discountCents = Math.floor(pkbApplied / 10) * 100;
     }
 
-    const afterDiscountCents = Math.max(subtotalCents - discountCents - codeDiscountCents, 50);
+    const afterDiscountCents = Math.max(subtotalCents - discountCents - codeDiscountCents, 0);
     const stateCode  = shipping_state.trim().toUpperCase();
     const countryCode = shipping_country.trim().toUpperCase();
 
@@ -155,6 +155,22 @@ Deno.serve(async (req: Request) => {
     // Tax is applied to the after-discount amount (before shipping)
     const taxCents = Math.round(afterDiscountCents * taxRate);
     const chargedCents = afterDiscountCents + taxCents + shippingCents;
+
+    // If the order is fully covered by discounts, skip Stripe
+    if (chargedCents <= 0) {
+      return respond({
+        free: true,
+        client_secret: null,
+        total_cents: 0,
+        subtotal_cents: subtotalCents,
+        discount_cents: discountCents,
+        code_discount_cents: codeDiscountCents,
+        discount_code: validatedDiscountCode,
+        shipping_cents: shippingCents,
+        tax_cents: taxCents,
+        tax_rate: taxRate,
+      });
+    }
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
       apiVersion: "2024-06-20",

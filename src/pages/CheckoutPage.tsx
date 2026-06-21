@@ -685,7 +685,7 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
   const pkbDiscount = pkbToApply / 10;
   const selectedMethod = shippingMethods.find((m) => m.id === selectedMethodId) ?? null;
   const shippingCost = selectedMethod ? Number(selectedMethod.price) : 0;
-  const finalTotal = Math.max(totalPrice + shippingCost - discountAmount - pkbDiscount, 1.0);
+  const finalTotal = Math.max(totalPrice + shippingCost - discountAmount - pkbDiscount, 0);
   const pkbEarnPreview = Math.floor(finalTotal * 10);
 
   const handleApplyDiscount = async () => {
@@ -793,10 +793,16 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to create payment intent');
 
-      setClientSecret(data.client_secret);
       setTaxAmount((data.tax_cents ?? 0) / 100);
       setTaxRate(data.tax_rate ?? 0);
       setChargedTotal((data.total_cents ?? 0) / 100);
+
+      if (data.free) {
+        await handlePaymentSuccess(null);
+        return;
+      }
+
+      setClientSecret(data.client_secret);
       setStep('payment');
     } catch (err) {
       alert((err as Error).message);
@@ -805,7 +811,7 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
     }
   };
 
-  const handlePaymentSuccess = async (paymentIntentId: string) => {
+  const handlePaymentSuccess = async (paymentIntentId: string | null) => {
     if (!user) return;
     const shippingAddress = [
       shipping.address1,
@@ -826,8 +832,8 @@ export default function CheckoutPage({ onNavigate }: { onNavigate: (page: string
           shipping_method_name: selectedMethod?.name ?? null,
           shipping_cost: shippingCost,
           status: 'pending',
-          stripe_payment_intent_id: paymentIntentId,
-          payment_status: 'paid',
+          stripe_payment_intent_id: paymentIntentId ?? null,
+          payment_status: paymentIntentId ? 'paid' : 'free',
           discount_code: appliedDiscountCode ?? null,
           discount_amount: discountAmount,
         })
