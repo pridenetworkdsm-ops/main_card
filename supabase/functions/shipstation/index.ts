@@ -104,8 +104,7 @@ Deno.serve(async (req: Request) => {
       const totalQty = (items as { quantity: number }[]).reduce((s, i) => s + i.quantity, 0);
       const weightOz = Math.max(2, totalQty * 2);
 
-      const body = {
-        carrierCode: null,
+      const rateBody = {
         serviceCode: null,
         packageCode: null,
         fromPostalCode,
@@ -119,9 +118,32 @@ Deno.serve(async (req: Request) => {
         residential: true,
       };
 
-      const { ok, data } = await ssFetch("/shipments/getrates", "POST", body);
-      if (!ok) return respond({ error: data?.message ?? "Failed to fetch rates", details: data }, 502);
-      return respond({ rates: Array.isArray(data) ? data : [] });
+      // getrates requires a carrierCode — fetch all connected carriers first,
+      // then request rates for each in parallel.
+      const { ok: cOk, data: cData } = await ssFetch("/carriers");
+      if (!cOk) return respond({ error: (cData as { message?: string })?.message ?? "Failed to fetch carriers", details: cData }, 502);
+
+      const carriers = (Array.isArray(cData) ? cData : []) as { code: string; name: string }[];
+      if (carriers.length === 0) {
+        return respond({ rates: [], warning: "No carriers are connected to your ShipStation account." });
+      }
+
+      const rateResults = await Promise.all(
+        carriers.map(async (carrier) => {
+          try {
+            const { ok, data } = await ssFetch("/shipments/getrates", "POST", {
+              ...rateBody,
+              carrierCode: carrier.code,
+            });
+            if (!ok || !Array.isArray(data)) return [];
+            return data as unknown[];
+          } catch {
+            return [];
+          }
+        })
+      );
+
+      return respond({ rates: rateResults.flat() });
     }
 
     // ── action: create_label ───────────────────────────────────────────────────
